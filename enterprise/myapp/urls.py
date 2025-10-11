@@ -10,7 +10,11 @@ router.register(r'roles', views.RoleViewSet, basename='role')
 
 urlpatterns = [
     # API endpoints
-    path('users/profile/', views.UserProfileView.as_view(), name='user-profile'),
+    path('users/me/', views.UserDetailView.as_view(), name='current-user-detail'),
+    path('users/me', views.UserDetailView.as_view(), name='current-user-detail-noslash'),
+    path('users/<str:username>/', views.UserDetailView.as_view(), name='user-detail'),
+    path('users/<str:username>', views.UserDetailView.as_view(), name='user-detail-noslash'),
+    path('profile/', views.UserProfileView.as_view(), name='user-profile'),
     
     # Include all router URLs
     path('', include(router.urls)),

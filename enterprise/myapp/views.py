@@ -17,6 +17,42 @@ class IsOperationsManager(permissions.BasePermission):
         return request.user.is_authenticated and hasattr(request.user, 'profile') and \
                request.user.profile.role.name == 'operations_manager'
 
+class UserDetailView(APIView):
+    """
+    View to retrieve user details.
+    Users can view their own details, admins can view any user's details.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, username=None):
+        # If no username is provided, return the current user's details
+        if username is None or username.lower() == 'me':
+            user = request.user
+        else:
+            # Check if the requesting user is an admin
+            if not (request.user.is_staff or request.user.is_superuser):
+                return Response(
+                    {"detail": "You do not have permission to view this user's details."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            try:
+                user = User.objects.get(username=username)
+            except User.DoesNotExist:
+                return Response(
+                    {"detail": "User not found."},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+        # Check if the requesting user has permission to view this user's details
+        if not (request.user.is_staff or request.user.is_superuser or request.user == user):
+            return Response(
+                {"detail": "You do not have permission to view this user's details."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        serializer = UserSerializer(user)
+        return Response(serializer.data)
+
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer

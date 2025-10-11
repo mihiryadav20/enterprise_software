@@ -25,21 +25,30 @@ from rest_framework_simplejwt.views import (
     TokenBlacklistView
 )
 
+# API v1 URL patterns
+api_v1_patterns = [
+    # JWT Authentication
+    path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('token/verify/', TokenVerifyView.as_view(), name='token_verify'),
+    path('token/blacklist/', TokenBlacklistView.as_view(), name='token_blacklist'),
+    
+    # App URLs
+    path('', include('myapp.urls')),
+]
+
 urlpatterns = [
     # Admin site
     path('admin/', admin.site.urls),
     
-    # API endpoints
-    path('api/', include('myapp.urls')),
-    
-    # JWT Authentication
-    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-    path('api/token/verify/', TokenVerifyView.as_view(), name='token_verify'),
-    path('api/token/blacklist/', TokenBlacklistView.as_view(), name='token_blacklist'),
+    # API v1 endpoints
+    path('api/v1/', include(api_v1_patterns)),
     
     # Browsable API login
     path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),
+    
+    # Redirect root to API v1
+    path('', include(api_v1_patterns)),
 ]
 
 # Serve media files in development
