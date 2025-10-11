@@ -18,29 +18,28 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from django.views.generic import RedirectView
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+    TokenVerifyView,
+    TokenBlacklistView
+)
 
-# API URL Patterns
-api_patterns = [
-    # API v1
-    path('v1/', include('myapp.urls')),
-    # Redirect root API to v1
-    path('', RedirectView.as_view(url='v1/', permanent=False)),
-]
-
-# Main URL Patterns
 urlpatterns = [
     # Admin site
     path('admin/', admin.site.urls),
     
     # API endpoints
-    path('api/', include(api_patterns)),
+    path('api/', include('myapp.urls')),
     
-    # Browsable API authentication
+    # JWT Authentication
+    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/token/verify/', TokenVerifyView.as_view(), name='token_verify'),
+    path('api/token/blacklist/', TokenBlacklistView.as_view(), name='token_blacklist'),
+    
+    # Browsable API login
     path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),
-    
-    # Redirect root to API
-    path('', RedirectView.as_view(url='api/', permanent=False)),
 ]
 
 # Serve media files in development

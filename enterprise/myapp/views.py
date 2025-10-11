@@ -1,12 +1,14 @@
-from rest_framework import viewsets, status, permissions
-from rest_framework.decorators import action
+from rest_framework import viewsets, status, permissions, generics
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from django.contrib.auth import get_user_model
 from .models import Department, Role, UserProfile
 from .serializers import (
     UserSerializer, UserProfileSerializer,
     DepartmentSerializer, RoleSerializer
 )
+from rest_framework.permissions import IsAuthenticated
 
 User = get_user_model()
 
@@ -65,3 +67,41 @@ class RoleViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         # Filter roles based on the current user's department if needed
         return Role.objects.all()
+
+
+class UserProfileView(APIView):
+    """
+    View to handle user profile operations.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, format=None):
+        """
+        Retrieve the current user's profile.
+        """
+        try:
+            profile = request.user.profile
+            serializer = UserProfileSerializer(profile)
+            return Response(serializer.data)
+        except UserProfile.DoesNotExist:
+            return Response(
+                {'error': 'User profile not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+    
+    def put(self, request, format=None):
+        """
+        Update the current user's profile.
+        """
+        try:
+            profile = request.user.profile
+            serializer = UserProfileSerializer(profile, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except UserProfile.DoesNotExist:
+            return Response(
+                {'error': 'User profile not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )

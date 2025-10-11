@@ -40,8 +40,11 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
-    'myapp',
+    'myapp.apps.MyappConfig',
 ]
+
+# Custom user model
+AUTH_USER_MODEL = 'myapp.User'
 
 # REST Framework settings
 REST_FRAMEWORK = {
