@@ -50,8 +50,23 @@ class UserDetailView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
+        # Get the basic user data
         serializer = UserSerializer(user)
-        return Response(serializer.data)
+        response_data = serializer.data
+        
+        # Add phone number to the response
+        response_data['phone'] = user.phone
+        
+        # Add profile information if available
+        if hasattr(user, 'profile') and user.profile:
+            profile_serializer = UserProfileSerializer(user.profile)
+            response_data.update({
+                'profile': profile_serializer.data,
+                'department': user.profile.department.name if user.profile.department else None,
+                'role': user.profile.role.name if user.profile.role else None
+            })
+        
+        return Response(response_data)
 
 class IsStaffUser(permissions.BasePermission):
     """
