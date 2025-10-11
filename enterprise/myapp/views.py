@@ -53,16 +53,37 @@ class UserDetailView(APIView):
         serializer = UserSerializer(user)
         return Response(serializer.data)
 
+class IsStaffUser(permissions.BasePermission):
+    """
+    Permission check for staff users.
+    """
+    def has_permission(self, request, view):
+        return request.user and request.user.is_staff
+
 class UserViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint that allows users to be viewed or edited.
+    Only accessible to staff users.
+    """
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [IsOperationsManager]
+    permission_classes = [IsStaffUser]
 
     def get_queryset(self):
-        # Only return users that the current user has permission to see
-        return User.objects.filter(
-            profile__department=self.request.user.profile.department
-        )
+        # For staff users, return all users
+        if self.request.user.is_staff:
+            return User.objects.all()
+            
+        # For non-staff users, return users in the same department
+        # Only if the current user has a profile with a department
+        if hasattr(self.request.user, 'profile') and self.request.user.profile.department:
+            return User.objects.filter(
+                profile__department=self.request.user.profile.department
+            )
+            
+        # If the current user doesn't have a profile or department,
+        # return an empty queryset (they can only see themselves)
+        return User.objects.filter(id=self.request.user.id)
 
     def perform_create(self, serializer):
         # Set the user who created this record
@@ -90,15 +111,23 @@ class UserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-class DepartmentViewSet(viewsets.ReadOnlyModelViewSet):
+class DepartmentViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint that allows departments to be viewed or edited.
+    Only accessible to staff users.
+    """
     queryset = Department.objects.all()
     serializer_class = DepartmentSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsStaffUser]
 
-class RoleViewSet(viewsets.ReadOnlyModelViewSet):
+class RoleViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint that allows roles to be viewed or edited.
+    Only accessible to staff users.
+    """
     queryset = Role.objects.all()
     serializer_class = RoleSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsStaffUser]
 
     def get_queryset(self):
         # Filter roles based on the current user's department if needed
