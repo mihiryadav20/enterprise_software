@@ -1,14 +1,19 @@
+from django.contrib.auth import get_user_model, login, logout
+from django.contrib.auth.forms import AuthenticationForm
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework import viewsets, status, permissions, generics
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.contrib.auth import get_user_model
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework_simplejwt.tokens import RefreshToken
+
 from .models import Department, Role, UserProfile
 from .serializers import (
     UserSerializer, UserProfileSerializer,
-    DepartmentSerializer, RoleSerializer
+    DepartmentSerializer, RoleSerializer, LoginSerializer
 )
-from rest_framework.permissions import IsAuthenticated
 
 User = get_user_model()
 
@@ -74,6 +79,82 @@ class IsStaffUser(permissions.BasePermission):
     """
     def has_permission(self, request, view):
         return request.user and request.user.is_staff
+
+class LoginView(APIView):
+    """
+    API endpoint that allows users to log in and obtain JWT tokens.
+    """
+    permission_classes = [AllowAny]
+    
+    @method_decorator(csrf_exempt)
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
+    
+    def post(self, request, *args, **kwargs):
+        serializer = LoginSerializer(
+            data=request.data,
+            context={'request': request}
+        )
+        
+        if serializer.is_valid():
+            user = serializer.validated_data['user']
+            
+            # Generate JWT tokens
+            refresh = RefreshToken.for_user(user)
+            
+            # Don't use Django's session-based auth
+            # login(request, user)  # Commented out to avoid session creation
+            
+            return Response({
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'email': user.email,
+                    'is_staff': user.is_staff,
+                }
+            }, status=status.HTTP_200_OK)
+            
+        return Response(
+            {"error": "Invalid credentials"}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+class LogoutView(APIView):
+    """
+    API endpoint that logs out users and blacklists their refresh token.
+    """
+    permission_classes = [AllowAny]
+    
+    @method_decorator(csrf_exempt)
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
+    
+    def post(self, request, *args, **kwargs):
+        try:
+            refresh_token = request.data.get("refresh")
+            if not refresh_token:
+                return Response({"error": "Refresh token is required"}, status=status.HTTP_400_BAD_REQUEST)
+                
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+            
+            # Clear the session if it exists
+            if hasattr(request, 'session'):
+                request.session.flush()
+                
+            return Response(
+                {"message": "Successfully logged out."}, 
+                status=status.HTTP_205_RESET_CONTENT
+            )
+        except Exception as e:
+            return Response(
+                {"error": "Invalid token or token is expired"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
 
 class UserViewSet(viewsets.ModelViewSet):
     """
