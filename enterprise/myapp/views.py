@@ -126,6 +126,7 @@ class LogoutView(APIView):
     """
     API endpoint that logs out users and blacklists their refresh token.
     """
+    authentication_classes = []
     permission_classes = [AllowAny]
     
     @method_decorator(csrf_exempt)
@@ -134,7 +135,8 @@ class LogoutView(APIView):
     
     def post(self, request, *args, **kwargs):
         try:
-            refresh_token = request.data.get("refresh")
+            # Accept both "refresh" and "refresh_token" field names
+            refresh_token = request.data.get("refresh") or request.data.get("refresh_token")
             if not refresh_token:
                 return Response({"error": "Refresh token is required"}, status=status.HTTP_400_BAD_REQUEST)
                 
