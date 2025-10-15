@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.forms import UserChangeForm, UserCreationForm
 from django.utils.translation import gettext_lazy as _
-from .models import Department, User, UserProfile, Role
+from .models import Department, Project, User, UserProfile, Role
 
 # Inline for UserProfile
 class UserProfileInline(admin.StackedInline):
@@ -46,3 +46,4 @@ admin.site.register(User, CustomUserAdmin)
 admin.site.register(Department)
 admin.site.register(Role)
 admin.site.register(UserProfile)
+admin.site.register(Project)

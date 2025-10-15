@@ -2,7 +2,8 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model, authenticate
 from django.contrib.auth.forms import AuthenticationForm
 from django.utils.translation import gettext_lazy as _
-from .models import Department, Role, UserProfile
+from .models import Department, Role, UserProfile, Project
+from django.db import transaction
 
 User = get_user_model()
 
@@ -72,6 +73,82 @@ class UserSerializer(serializers.ModelSerializer):
         if profile_serializer.is_valid():
             profile_serializer.save(user=user)
         return user
+
+
+class ProjectMemberSerializer(serializers.Serializer):
+    """Serializer for adding members to a project during creation."""
+    user_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(),
+        source='user',
+        required=True
+    )
+    role = serializers.ChoiceField(
+        choices=[
+            ('admin', 'Admin'),
+            ('member', 'Member'),
+            ('viewer', 'Viewer')
+        ],
+        required=True
+    )
+
+    class Meta:
+        fields = ['user_id', 'role']
+
+
+class ProjectSerializer(serializers.ModelSerializer):
+    """Serializer for Project model with member management."""
+    members = ProjectMemberSerializer(many=True, required=False)
+    owner_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(),
+        source='owner',
+        required=True
+    )
+    department_id = serializers.PrimaryKeyRelatedField(
+        queryset=Department.objects.all(),
+        source='department',
+        required=False,
+        allow_null=True
+    )
+
+    class Meta:
+        model = Project
+        fields = [
+            'id', 'key', 'name', 'description', 'status', 'priority',
+            'start_date', 'end_date', 'budget', 'progress', 'owner_id',
+            'department_id', 'is_template', 'is_public', 'members', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'completed_at']
+
+    def validate_key(self, value):
+        """Validate project key format (e.g., PRJ-001)."""
+        if not value.startswith('PRJ-'):
+            raise serializers.ValidationError("Project key must start with 'PRJ-'")
+        return value
+
+    def create(self, validated_data):
+        """Create project with members."""
+        members_data = validated_data.pop('members', [])
+        
+        with transaction.atomic():
+            # Create the project
+            project = Project.objects.create(**validated_data)
+            
+            # Add members if provided
+            for member_data in members_data:
+                project.members.add(
+                    member_data['user'],
+                    through_defaults={'role': member_data['role']}
+                )
+            
+            # Add creator as admin if not already in members
+            creator = self.context['request'].user
+            if not any(m['user'] == creator for m in members_data):
+                project.members.add(
+                    creator,
+                    through_defaults={'role': 'admin'}
+                )
+            
+            return project
 
 
 class LoginSerializer(serializers.Serializer):
