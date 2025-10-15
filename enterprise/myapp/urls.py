@@ -7,6 +7,11 @@ from . import views
 router = DefaultRouter()
 router.register(r'users', views.UserViewSet, basename='user')
 
+# Staff-only endpoints
+staff_router = DefaultRouter()
+staff_router.register(r'departments', views.DepartmentViewSet, basename='department')
+staff_router.register(r'roles', views.RoleViewSet, basename='role')
+
 urlpatterns = [
     # Authentication endpoints
     path('auth/login/', views.LoginView.as_view(), name='login'),
@@ -16,6 +21,9 @@ urlpatterns = [
     # Current user profile
     path('users/me/', views.UserDetailView.as_view(), name='current-user-detail'),
     
-    # Include router URLs (only users endpoint remains)
+    # Staff-only endpoints
+    path('staff/', include(staff_router.urls)),
+    
+    # Include router URLs
     path('', include(router.urls)),
 ]
