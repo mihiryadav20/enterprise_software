@@ -2,18 +2,21 @@ from django.contrib.auth import get_user_model, login, logout
 from django.contrib.auth.forms import AuthenticationForm
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
-from rest_framework import viewsets, status, permissions, generics
+from rest_framework import viewsets, status, permissions, generics, mixins
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.viewsets import GenericViewSet
 
-from .models import Department, Role, UserProfile
+from .models import Department, Role, UserProfile, Project
 from .serializers import (
     UserSerializer, UserProfileSerializer,
-    DepartmentSerializer, RoleSerializer, LoginSerializer
+    DepartmentSerializer, RoleSerializer, LoginSerializer,
+    ProjectSerializer, ProjectMemberSerializer
 )
+from .permissions import IsOperationsLeadOrStaff
 
 User = get_user_model()
 
@@ -184,30 +187,108 @@ class UserViewSet(viewsets.ModelViewSet):
         return User.objects.filter(id=self.request.user.id)
 
     def perform_create(self, serializer):
-        # Set the user who created this record
-        serializer.save()
+        user = serializer.save()
+        # Set a default password if not provided
+        if not user.password:
+            user.set_password('defaultpassword')
+            user.save()
 
     @action(detail=True, methods=['post'])
     def assign_role(self, request, pk=None):
         user = self.get_object()
         role_id = request.data.get('role_id')
-        
-        if not role_id:
-            return Response(
-                {'error': 'role_id is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
         try:
-            role = Role.objects.get(id=role_id)
-            user.profile.role = role
-            user.profile.save()
+            role = Role.objects.get(pk=role_id)
+            profile, created = UserProfile.objects.get_or_create(user=user)
+            profile.role = role
+            profile.save()
             return Response({'status': 'role assigned'})
         except Role.DoesNotExist:
             return Response(
-                {'error': 'Invalid role_id'},
+                {'error': 'Role not found'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+
+class ProjectViewSet(mixins.CreateModelMixin,
+                    mixins.RetrieveModelMixin,
+                    mixins.ListModelMixin,
+                    GenericViewSet):
+    """
+    API endpoint that allows projects to be created and viewed.
+    """
+    queryset = Project.objects.all()
+    serializer_class = ProjectSerializer
+    permission_classes = [IsAuthenticated, IsOperationsLeadOrStaff]
+
+    def get_serializer_context(self):
+        """
+        Extra context provided to the serializer class.
+        """
+        return {
+            'request': self.request,
+            'format': self.format_kwarg,
+            'view': self
+        }
+
+    def perform_create(self, serializer):
+        """
+        Set the created_by field to the current user.
+        """
+        serializer.save(created_by=self.request.user)
+
+    def get_queryset(self):
+        """
+        Filter projects based on user permissions.
+        """
+        user = self.request.user
+        
+        # Staff and Operations Leads can see all projects
+        if user.is_staff or (hasattr(user, 'profile') and 
+                           user.profile.role and 
+                           user.profile.role.name == 'operations_lead'):
+            return Project.objects.all()
+            
+        # Regular users can only see projects they're members of
+        return Project.objects.filter(members=user)
+
+    @action(detail=True, methods=['post'], url_path='add-members')
+    def add_members(self, request, pk=None):
+        """
+        Add members to a project.
+        Only project admins can add members.
+        """
+        project = self.get_object()
+        
+        # Check if user is admin of the project
+        if not project.members.through.objects.filter(
+            user=request.user, 
+            project=project,
+            role='admin'
+        ).exists() and not request.user.is_staff:
+            return Response(
+                {'error': 'You do not have permission to add members to this project'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+            
+        serializer = ProjectMemberSerializer(data=request.data, many=True)
+        if serializer.is_valid():
+            members_data = serializer.validated_data
+            
+            with transaction.atomic():
+                for member_data in members_data:
+                    project.members.add(
+                        member_data['user'],
+                        through_defaults={'role': member_data['role']}
+                    )
+            
+            return Response(
+                {'status': 'Members added successfully'},
+                status=status.HTTP_201_CREATED
+            )
+            
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 class DepartmentViewSet(viewsets.ModelViewSet):
     """

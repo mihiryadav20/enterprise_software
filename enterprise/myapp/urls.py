@@ -6,6 +6,7 @@ from . import views
 # Create a router for our API endpoints
 router = DefaultRouter()
 router.register(r'users', views.UserViewSet, basename='user')
+router.register(r'projects', views.ProjectViewSet, basename='project')
 
 # Staff-only endpoints
 staff_router = DefaultRouter()
