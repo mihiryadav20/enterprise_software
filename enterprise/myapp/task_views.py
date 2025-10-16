@@ -4,10 +4,13 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from django.db import transaction
+from django.contrib.auth import get_user_model
 
-from .models import Task, TaskAttachment, TaskStatus
-from .task_serializers import TaskSerializer, TaskCreateSerializer, TaskAttachmentSerializer
+from .models import Task, TaskAttachment, TaskStatus, TaskAssignment
+from .task_serializers import TaskSerializer, TaskCreateSerializer, TaskAttachmentSerializer, TaskAssignmentSerializer
 from .permissions import IsStaffUser, IsProjectMember, IsTaskAssigneeOrCreator
+
+User = get_user_model()
 
 
 class TaskViewSet(
@@ -28,8 +31,12 @@ class TaskViewSet(
         Return tasks that the user has permission to view.
         """
         queryset = Task.objects.select_related(
-            'project', 'assignee', 'created_by'
-        ).prefetch_related('attachments')
+            'project', 'created_by'
+        ).prefetch_related(
+            'attachments',
+            'assignments',
+            'assignments__assignee'
+        )
         
         # Filter by project if project_id is provided
         project_id = self.request.query_params.get('project_id')
@@ -39,7 +46,7 @@ class TaskViewSet(
         # Filter by assignee if assignee_id is provided
         assignee_id = self.request.query_params.get('assignee_id')
         if assignee_id:
-            queryset = queryset.filter(assignee_id=assignee_id)
+            queryset = queryset.filter(assignments__assignee_id=assignee_id)
             
         # Filter by status if status is provided
         status_param = self.request.query_params.get('status')
@@ -50,6 +57,11 @@ class TaskViewSet(
         priority = self.request.query_params.get('priority')
         if priority:
             queryset = queryset.filter(priority=priority)
+            
+        # Filter by lead assignee if lead_assignee_id is provided
+        lead_assignee_id = self.request.query_params.get('lead_assignee_id')
+        if lead_assignee_id:
+            queryset = queryset.filter(assignments__assignee_id=lead_assignee_id, assignments__is_lead=True)
             
         # Filter by overdue status
         is_overdue = self.request.query_params.get('is_overdue', '').lower()
@@ -127,7 +139,52 @@ class TaskViewSet(
     @action(detail=True, methods=['post'], url_path='assign')
     def assign_task(self, request, pk=None):
         """
-        Assign a task to a user.
+        Assign a user to a task.
+        """
+        task = self.get_object()
+        user_id = request.data.get('user_id')
+        is_lead = request.data.get('is_lead', False)
+        
+        if not user_id:
+            return Response(
+                {'error': 'user_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response(
+                {'error': 'User not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+            
+        # Verify the user is a member of the project
+        if not task.project.project_members.filter(user=user).exists():
+            return Response(
+                {'error': 'User is not a member of this project'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create or update the assignment
+        assignment, created = TaskAssignment.objects.update_or_create(
+            task=task,
+            assignee=user,
+            defaults={'is_lead': is_lead}
+        )
+        
+        # If this is the first assignment, make it the lead
+        if created and not task.assignments.exists():
+            assignment.is_lead = True
+            assignment.save()
+            
+        serializer = self.get_serializer(task)
+        return Response(serializer.data)
+        
+    @action(detail=True, methods=['post'], url_path='unassign')
+    def unassign_task(self, request, pk=None):
+        """
+        Unassign a user from a task.
         """
         task = self.get_object()
         user_id = request.data.get('user_id')
@@ -138,16 +195,54 @@ class TaskViewSet(
                 status=status.HTTP_400_BAD_REQUEST
             )
             
-        # Verify the user is a member of the project
-        if not task.project.project_members.filter(user_id=user_id).exists():
+        try:
+            assignment = TaskAssignment.objects.get(task=task, assignee_id=user_id)
+            was_lead = assignment.is_lead
+            assignment.delete()
+            
+            # If we removed the lead, assign a new lead if there are other assignees
+            if was_lead and task.assignments.exists():
+                new_lead = task.assignments.first()
+                new_lead.is_lead = True
+                new_lead.save()
+                
+        except TaskAssignment.DoesNotExist:
             return Response(
-                {'error': 'User is not a member of this project'},
+                {'error': 'User is not assigned to this task'},
                 status=status.HTTP_400_BAD_REQUEST
             )
             
-        task.assignee_id = user_id
-        task.save()
+        serializer = self.get_serializer(task)
+        return Response(serializer.data)
         
+    @action(detail=True, methods=['post'], url_path='set-lead')
+    def set_lead_assignee(self, request, pk=None):
+        """
+        Set the lead assignee for a task.
+        """
+        task = self.get_object()
+        user_id = request.data.get('user_id')
+        
+        if not user_id:
+            return Response(
+                {'error': 'user_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        # Clear existing lead
+        task.assignments.update(is_lead=False)
+        
+        # Set new lead
+        try:
+            assignment = task.assignments.get(assignee_id=user_id)
+            assignment.is_lead = True
+            assignment.save()
+        except TaskAssignment.DoesNotExist:
+            return Response(
+                {'error': 'User is not assigned to this task'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
         serializer = self.get_serializer(task)
         return Response(serializer.data)
 

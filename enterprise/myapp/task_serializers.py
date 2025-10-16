@@ -2,6 +2,8 @@ from rest_framework import serializers
 from django.utils.translation import gettext_lazy as _
 from .models import Task, TaskAttachment, TaskPriority, TaskStatus
 from django.contrib.auth import get_user_model
+from django.utils import timezone
+from .models import TaskAssignment
 
 User = get_user_model()
 
@@ -26,6 +28,20 @@ class TaskAttachmentSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at']
 
 
+class TaskAssignmentSerializer(serializers.ModelSerializer):
+    """Serializer for task assignments."""
+    id = serializers.ReadOnlyField(source='assignee.id')
+    username = serializers.ReadOnlyField(source='assignee.username')
+    full_name = serializers.ReadOnlyField(source='assignee.get_full_name')
+    email = serializers.ReadOnlyField(source='assignee.email')
+    is_lead = serializers.BooleanField()
+    assigned_at = serializers.DateTimeField(read_only=True)
+
+    class Meta:
+        model = TaskAssignment
+        fields = ['id', 'username', 'full_name', 'email', 'is_lead', 'assigned_at']
+
+
 class TaskSerializer(serializers.ModelSerializer):
     """Serializer for the Task model."""
     priority = serializers.ChoiceField(
@@ -36,15 +52,17 @@ class TaskSerializer(serializers.ModelSerializer):
         choices=TaskStatus.choices,
         default=TaskStatus.TODO
     )
-    assignee = serializers.PrimaryKeyRelatedField(
+    assignees = serializers.PrimaryKeyRelatedField(
+        many=True,
         queryset=User.objects.all(),
-        required=False,
-        allow_null=True
+        required=False
     )
-    assignee_name = serializers.CharField(
-        source='assignee.get_full_name',
+    assignee_details = TaskAssignmentSerializer(
+        source='assignments',
+        many=True,
         read_only=True
     )
+    lead_assignee = serializers.SerializerMethodField()
     created_by_name = serializers.CharField(
         source='created_by.get_full_name',
         read_only=True
@@ -64,21 +82,36 @@ class TaskSerializer(serializers.ModelSerializer):
         model = Task
         fields = [
             'id', 'title', 'description', 'project', 'project_name',
-            'assignee', 'assignee_name', 'created_by', 'created_by_name',
-            'due_date', 'priority', 'status', 'created_at', 'updated_at',
-            'completed_at', 'attachments', 'attachment_count', 'is_overdue'
+            'assignees', 'assignee_details', 'lead_assignee', 'created_by', 
+            'created_by_name', 'due_date', 'priority', 'status', 'created_at', 
+            'updated_at', 'completed_at', 'attachments', 'attachment_count', 
+            'is_overdue'
         ]
         read_only_fields = [
             'id', 'created_at', 'updated_at', 'completed_at',
-            'created_by', 'attachments', 'attachment_count', 'is_overdone'
+            'created_by', 'attachments', 'attachment_count', 'is_overdue',
+            'assignee_details', 'lead_assignee'
         ]
+
+    def get_lead_assignee(self, obj):
+        """
+        Get the lead assignee for the task.
+        """
+        lead = obj.get_lead_assignee()
+        if lead:
+            return {
+                'id': lead.id,
+                'username': lead.username,
+                'full_name': lead.get_full_name(),
+                'email': lead.email
+            }
+        return None
 
     def get_is_overdue(self, obj):
         """
         Check if the task is overdue.
         """
         if obj.due_date and obj.status != TaskStatus.DONE:
-            from django.utils import timezone
             return timezone.now() > obj.due_date
         return False
 
@@ -92,11 +125,46 @@ class TaskSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         """
-        Create a new task and set the created_by field.
+        Create a new task with multiple assignees.
         """
-        # Set the created_by field to the current user
-        validated_data['created_by'] = self.context['request'].user
-        return super().create(validated_data)
+        assignees = validated_data.pop('assignees', [])
+        task = super().create(validated_data)
+        
+        # Create task assignments
+        for assignee in assignees:
+            TaskAssignment.objects.create(
+                task=task,
+                assignee=assignee,
+                is_lead=not task.assignments.exists()
+            )
+            
+        return task
+        
+    def update(self, instance, validated_data):
+        """
+        Update a task and handle assignees.
+        """
+        assignees = validated_data.pop('assignees', None)
+        task = super().update(instance, validated_data)
+        
+        if assignees is not None:
+            # Get current assignees
+            current_assignees = set(task.assignees.all())
+            new_assignees = set(assignees)
+            
+            # Remove assignments that are no longer present
+            for assignee in current_assignees - new_assignees:
+                TaskAssignment.objects.filter(task=task, assignee=assignee).delete()
+            
+            # Add new assignments
+            for assignee in new_assignees - current_assignees:
+                TaskAssignment.objects.create(
+                    task=task,
+                    assignee=assignee,
+                    is_lead=not task.assignments.exists()
+                )
+        
+        return task
 
     def update(self, instance, validated_data):
         """

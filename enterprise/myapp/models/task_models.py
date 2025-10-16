@@ -2,7 +2,7 @@ from django.db import models
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
-from .project_models import Project
+from .project_models import Project, ProjectMember
 
 class TaskPriority(models.TextChoices):
     LOW = 'low', _('Low')
@@ -16,6 +16,43 @@ class TaskStatus(models.TextChoices):
     IN_REVIEW = 'in_review', _('In Review')
     DONE = 'done', _('Done')
     BLOCKED = 'blocked', _('Blocked')
+
+class TaskAssignment(models.Model):
+    """
+    Model representing the assignment of a task to a user.
+    """
+    task = models.ForeignKey(
+        'Task',
+        on_delete=models.CASCADE,
+        related_name='assignments',
+        help_text=_('The task being assigned')
+    )
+    assignee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='task_assignments',
+        help_text=_('User assigned to the task')
+    )
+    assigned_at = models.DateTimeField(auto_now_add=True)
+    is_lead = models.BooleanField(
+        default=False,
+        help_text=_('Whether this assignee is the lead for the task')
+    )
+
+    class Meta:
+        unique_together = ('task', 'assignee')
+        verbose_name = _('task assignment')
+        verbose_name_plural = _('task assignments')
+
+    def __str__(self):
+        return f"{self.assignee.username} assigned to {self.task.title}"
+
+    def save(self, *args, **kwargs):
+        # If this is the first assignment, make it the lead
+        if not self.pk and not TaskAssignment.objects.filter(task=self.task).exists():
+            self.is_lead = True
+        super().save(*args, **kwargs)
+
 
 class Task(models.Model):
     """
@@ -38,13 +75,12 @@ class Task(models.Model):
         related_name='tasks',
         help_text=_('The project this task belongs to')
     )
-    assignee = models.ForeignKey(
+    assignees = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
+        through='TaskAssignment',
+        through_fields=('task', 'assignee'),
         related_name='assigned_tasks',
-        help_text=_('User assigned to this task')
+        help_text=_('Users assigned to this task')
     )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -83,12 +119,27 @@ class Task(models.Model):
         verbose_name_plural = _('tasks')
         indexes = [
             models.Index(fields=['project', 'status']),
-            models.Index(fields=['assignee', 'status']),
             models.Index(fields=['due_date']),
         ]
 
     def __str__(self):
         return f"{self.title} ({self.get_status_display()})"
+        
+    def get_lead_assignee(self):
+        """
+        Returns the lead assignee for this task, if any.
+        """
+        assignment = self.assignments.filter(is_lead=True).first()
+        return assignment.assignee if assignment else None
+
+    @property
+    def is_overdue(self):
+        """
+        Returns True if the task is overdue (due date has passed and task is not done).
+        """
+        if not self.due_date or self.status == TaskStatus.DONE:
+            return False
+        return timezone.now() > self.due_date
 
     def save(self, *args, **kwargs):
         # Update completed_at when status changes to DONE
