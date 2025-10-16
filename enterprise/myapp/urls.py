@@ -1,7 +1,8 @@
 from django.urls import path, include
-from rest_framework.routers import DefaultRouter
+from rest_framework.routers import DefaultRouter, SimpleRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 from . import views
+from .task_views import TaskViewSet, TaskAttachmentViewSet
 
 # Create a router for our API endpoints
 router = DefaultRouter()
@@ -13,6 +14,18 @@ staff_router = DefaultRouter()
 staff_router.register(r'departments', views.DepartmentViewSet, basename='department')
 staff_router.register(r'roles', views.RoleViewSet, basename='role')
 
+# Task endpoints - using SimpleRouter to avoid conflicts with the main router
+task_router = SimpleRouter()
+task_router.register(r'tasks', TaskViewSet, basename='task')
+
+# Task attachment endpoints
+task_attachment_router = SimpleRouter()
+task_attachment_router.register(
+    r'attachments', 
+    TaskAttachmentViewSet, 
+    basename='task-attachment'
+)
+
 urlpatterns = [
     # Authentication endpoints
     path('auth/login/', views.LoginView.as_view(), name='login'),
@@ -21,6 +34,18 @@ urlpatterns = [
     
     # Current user profile
     path('users/me/', views.UserDetailView.as_view(), name='current-user-detail'),
+    
+    # Task endpoints
+    path('projects/<int:project_id>/', include([
+        # Task list/create
+        path('tasks/', include(task_router.urls)),
+        
+        # Task detail/update/delete
+        path('tasks/<int:pk>/', include(task_router.urls)),
+        
+        # Task attachments
+        path('tasks/<int:task_id>/', include(task_attachment_router.urls)),
+    ])),
     
     # Staff-only endpoints
     path('staff/', include(staff_router.urls)),
