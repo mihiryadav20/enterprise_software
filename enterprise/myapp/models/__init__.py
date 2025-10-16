@@ -1,11 +1,11 @@
-# Import all models from user_models and project_models
+# Import all models to make them available at myapp.models
 from .user_models import Department, Role, User, UserProfile
 from .project_models import Project, ProjectMember
 
-# Make models available at the package level
+# Make models available at package level
 __all__ = [
     'Department',
-    'Role', 
+    'Role',
     'User',
     'UserProfile',
     'Project',
