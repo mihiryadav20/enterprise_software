@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model, authenticate
 from django.contrib.auth.forms import AuthenticationForm
 from django.utils.translation import gettext_lazy as _
-from .models import Department, Role, UserProfile, Project
+from .models import Department, Role, UserProfile, Project, ProjectMember
 from django.db import transaction
 
 User = get_user_model()
@@ -75,29 +75,22 @@ class UserSerializer(serializers.ModelSerializer):
         return user
 
 
-class ProjectMemberSerializer(serializers.Serializer):
-    """Serializer for adding members to a project during creation."""
+class ProjectMemberSerializer(serializers.ModelSerializer):
+    """Serializer for project members."""
     user_id = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(),
-        source='user',
-        required=True
+        source='user'
     )
-    role = serializers.ChoiceField(
-        choices=[
-            ('admin', 'Admin'),
-            ('member', 'Member'),
-            ('viewer', 'Viewer')
-        ],
-        required=True
-    )
+    username = serializers.CharField(source='user.username', read_only=True)
 
     class Meta:
-        fields = ['user_id', 'role']
+        model = ProjectMember
+        fields = ['user_id', 'username', 'role']
 
 
 class ProjectSerializer(serializers.ModelSerializer):
     """Serializer for Project model with member management."""
-    members = ProjectMemberSerializer(many=True, required=False)
+    members = ProjectMemberSerializer(many=True, required=False, source='project_members')
     owner_id = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(),
         source='owner',
@@ -127,7 +120,7 @@ class ProjectSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         """Create project with members."""
-        members_data = validated_data.pop('members', [])
+        members_data = validated_data.pop('project_members', [])
         
         with transaction.atomic():
             # Create the project

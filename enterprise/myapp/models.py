@@ -5,6 +5,40 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.core.validators import MinValueValidator, MaxValueValidator
 
+
+class ProjectMember(models.Model):
+    """Model to represent project members and their roles."""
+    class RoleChoices(models.TextChoices):
+        ADMIN = 'admin', _('Admin')
+        MEMBER = 'member', _('Member')
+        VIEWER = 'viewer', _('Viewer')
+    
+    project = models.ForeignKey(
+        'Project',
+        on_delete=models.CASCADE,
+        related_name='project_members'
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='project_memberships'
+    )
+    role = models.CharField(
+        max_length=10,
+        choices=RoleChoices.choices,
+        default=RoleChoices.MEMBER
+    )
+    joined_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('project', 'user')
+        verbose_name = _('project member')
+        verbose_name_plural = _('project members')
+
+    def __str__(self):
+        return f"{self.user.username} - {self.get_role_display()} in {self.project.name}"
+
 class Department(models.Model):
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True, null=True)
@@ -212,6 +246,14 @@ class Project(models.Model):
         null=True,
         blank=True,
         help_text=_('When the project was marked as completed')
+    )
+
+    members = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        through='ProjectMember',
+        through_fields=('project', 'user'),
+        related_name='projects',
+        blank=True
     )
 
     class Meta:
