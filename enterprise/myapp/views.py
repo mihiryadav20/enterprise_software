@@ -144,6 +144,7 @@ class LogoutView(APIView):
                 return Response({"error": "Refresh token is required"}, status=status.HTTP_400_BAD_REQUEST)
                 
             token = RefreshToken(refresh_token)
+            # Use the correct method to blacklist the token
             token.blacklist()
             
             # Clear the session if it exists
@@ -154,9 +155,27 @@ class LogoutView(APIView):
                 {"message": "Successfully logged out."}, 
                 status=status.HTTP_205_RESET_CONTENT
             )
+        except AttributeError:
+            # If blacklist() method doesn't exist, try the alternative
+            try:
+                from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
+                token = RefreshToken(refresh_token)
+                jti = token['jti']
+                outstanding_token = OutstandingToken.objects.get(jti=jti)
+                BlacklistedToken.objects.get_or_create(token=outstanding_token)
+                
+                return Response(
+                    {"message": "Successfully logged out."}, 
+                    status=status.HTTP_205_RESET_CONTENT
+                )
+            except Exception as e:
+                return Response(
+                    {"error": f"Failed to blacklist token: {str(e)}"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
         except Exception as e:
             return Response(
-                {"error": "Invalid token or token is expired"}, 
+                {"error": f"Invalid token or token is expired: {str(e)}"}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
