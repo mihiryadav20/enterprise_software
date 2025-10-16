@@ -16,7 +16,7 @@ staff_router.register(r'roles', views.RoleViewSet, basename='role')
 
 # Task endpoints - using SimpleRouter to avoid conflicts with the main router
 task_router = SimpleRouter()
-task_router.register(r'tasks', TaskViewSet, basename='task')
+task_router.register(r'', TaskViewSet, basename='task')
 
 # Task attachment endpoints
 task_attachment_router = SimpleRouter()
@@ -36,15 +36,12 @@ urlpatterns = [
     path('users/me/', views.UserDetailView.as_view(), name='current-user-detail'),
     
     # Task endpoints
-    path('projects/<int:project_id>/', include([
-        # Task list/create
-        path('tasks/', include(task_router.urls)),
-        
-        # Task detail/update/delete
-        path('tasks/<int:pk>/', include(task_router.urls)),
+    path('projects/<int:project_id>/tasks/', include([
+        # Task list/create/detail/update/delete
+        path('', include(task_router.urls)),
         
         # Task attachments
-        path('tasks/<int:task_id>/', include(task_attachment_router.urls)),
+        path('<int:task_id>/attachments/', include(task_attachment_router.urls)),
     ])),
     
     # Staff-only endpoints
