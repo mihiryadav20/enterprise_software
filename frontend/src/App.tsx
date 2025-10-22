@@ -1,11 +1,13 @@
-import { LoginForm } from "@/components/login-form"
+import { Routes, Route, Navigate } from 'react-router-dom';
+import LoginPage from './pages/LoginPage';
 
 function App() {
   return (
-    <div className="flex min-h-svh flex-col items-center justify-center w-full p-4">
-      <LoginForm className="max-w-lg w-full" />
-    </div>
-  )
+    <Routes>
+      <Route path="/" element={<Navigate to="/login" replace />} />
+      <Route path="/login" element={<LoginPage />} />
+    </Routes>
+  );
 }
 
-export default App
+export default App;
