@@ -42,6 +42,34 @@ export const login = async (username: string, password: string): Promise<LoginRe
   }
 };
 
+
+export interface UserProfile {
+  id: number;
+  username: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+}
+
+export const getUserProfile = async (token: string): Promise<UserProfile> => {
+  try {
+    const response: AxiosResponse<UserProfile> = await api.get("/users/me/", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const serverError = error as AxiosError<{ detail?: string }>;
+      if (serverError.response) {
+        throw new Error(serverError.response.data?.detail || "Failed to fetch user profile");
+      }
+    }
+    throw new Error("Unable to connect to the server.");
+  }
+};
+
 // Add a response interceptor to handle 401 responses
 api.interceptors.response.use(
   (response) => response,

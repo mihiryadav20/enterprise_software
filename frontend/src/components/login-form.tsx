@@ -39,8 +39,8 @@ export function LoginForm({
       // For debugging
       console.log("Login successful, user:", data.user);
       
-      // Redirect to dashboard or home page
-      window.location.href = "/";
+      // Redirect to profile page
+      window.location.href = "/profile";
       
     } catch (err: any) {
       console.error("Login error:", err);
