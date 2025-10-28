@@ -1,11 +1,12 @@
-const API_BASE_URL = '/api/v1';
+const API_BASE_URL = '/api';
 
 export const API_ENDPOINTS = {
   AUTH: {
     LOGIN: `${API_BASE_URL}/auth/login/`,
-    LOGOUT: `${API_BASE_URL}/auth/logout/`,
     REFRESH: `${API_BASE_URL}/auth/refresh/`,
-    ME: `${API_BASE_URL}/auth/me/`,
+    VERIFY: `${API_BASE_URL}/auth/verify/`,
+    BLACKLIST: `${API_BASE_URL}/auth/blacklist/`,
+    ME: `${API_BASE_URL}/users/me/`,
   },
   // Add more API endpoints here as needed
   // Example:
@@ -111,9 +112,28 @@ export const authApi = {
   },
 
   logout: async () => {
-    return apiRequest(API_ENDPOINTS.AUTH.LOGOUT, {
-      method: 'POST',
-    });
+    // Get the refresh token from localStorage or wherever you store it
+    const refreshToken = localStorage.getItem('refresh_token');
+    
+    if (refreshToken) {
+      try {
+        // Blacklist the refresh token
+        await apiRequest(API_ENDPOINTS.AUTH.BLACKLIST, {
+          method: 'POST',
+          body: { refresh: refreshToken },
+          includeAuth: true,
+        });
+      } catch (error) {
+        console.error('Error during logout:', error);
+        // Even if blacklist fails, we should still clear the tokens
+      }
+      
+      // Clear tokens from storage
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+    }
+    
+    return Promise.resolve();
   },
 
   getCurrentUser: async () => {

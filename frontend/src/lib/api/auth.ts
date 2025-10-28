@@ -1,6 +1,5 @@
 import { auth } from '$lib/stores/auth';
-
-const API_BASE_URL = 'http://localhost:8000/api';
+import { API_ENDPOINTS } from '.';
 
 export interface LoginResponse {
   access: string;
@@ -9,7 +8,7 @@ export interface LoginResponse {
 
 export async function login(username: string, password: string): Promise<boolean> {
   try {
-    const response = await fetch(`${API_BASE_URL}/auth/login/`, {
+    const response = await fetch(API_ENDPOINTS.AUTH.LOGIN, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -23,6 +22,7 @@ export async function login(username: string, password: string): Promise<boolean
     }
 
     const data: LoginResponse = await response.json();
+    
     auth.login(username, data.access, data.refresh);
     return true;
   } catch (error) {
@@ -32,8 +32,10 @@ export async function login(username: string, password: string): Promise<boolean
 }
 
 export async function refreshAccessToken(refreshToken: string): Promise<string | null> {
+  let response: Response;
+  
   try {
-    const response = await fetch(`${API_BASE_URL}/token/refresh/`, {
+    response = await fetch(API_ENDPOINTS.AUTH.REFRESH, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -46,11 +48,15 @@ export async function refreshAccessToken(refreshToken: string): Promise<string |
     }
 
     const data: { access: string } = await response.json();
-    auth.refreshToken(data.access);
+    if (auth && typeof auth.refreshToken === 'function') {
+      auth.refreshToken(data.access);
+    }
     return data.access;
   } catch (error) {
     console.error('Token refresh failed:', error);
-    auth.logout();
+    if (auth && typeof auth.logout === 'function') {
+      auth.logout();
+    }
     return null;
   }
 }
