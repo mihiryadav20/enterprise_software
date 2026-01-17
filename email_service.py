@@ -23,7 +23,7 @@ async def send_magic_link_email(to_email: str, token: str) -> bool:
     if not RESEND_API_KEY:
         raise ValueError("RESEND_API_KEY is not configured")
 
-    magic_link = f"{FRONTEND_URL}/auth/verify?token={token}"
+    magic_link = f"{FRONTEND_URL}/dashboard?token={token}"
 
     html_content = f"""
     <!DOCTYPE html>
