@@ -46,10 +46,11 @@ async def root():
         "message": "Authentication API",
         "endpoints": {
             "google_oauth": {
-                "login": "/auth/login",
-                "callback": "/auth/callback",
-                "me": "/auth/me",
-                "logout": "/auth/logout"
+                "login": "/auth/google/login",
+                "callback": "/auth/google/callback",
+                "refresh": "/auth/google/refresh",
+                "me": "/auth/google/me",
+                "logout": "/auth/google/logout"
             },
             "magic_link": {
                 "request": "/auth/magic/request",
